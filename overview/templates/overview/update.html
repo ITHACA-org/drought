@@ -1,0 +1,8 @@
+{% extends 'overview/base.html' %}
+
+{% block infotext %}
+<div>
+    <p>Latest update available: {{latest_date}}</p>
+    <a href={% url 'historical' %}>Historical Data</a>
+</div>
+{% endblock infotext %}

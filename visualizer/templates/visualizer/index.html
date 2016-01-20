@@ -1,0 +1,364 @@
+{% extends 'overview/base.html' %}
+
+        {% block initialize %}
+            // alert('Beta version for demonstration purposes\n(Work in progress!)');
+
+            // declare the global variables
+            var geoserver_instance = 'http://www.ithacaweb.org/geoserver';
+
+            var ndvi_dates = [{% for date in ndvi_dates %}new Date('{{date.isoformat}}'), {% endfor %}];
+            var cur_ndvi_index = ndvi_dates.length - 1;
+            var SPI_dates = [{% for date in SPI_dates %}new Date('{{date.isoformat}}'), {% endfor %}];
+            var cur_SPI_index = SPI_dates.length - 1;
+
+            // initializing the dates in visualization
+            update_date_elms(ndvi_dates[cur_ndvi_index]);
+        {% endblock initialize %}
+
+        {% block map_ui %}
+        <div id="map-ui">
+
+            <h1><a href="http://ithacaweb.org/projects/drought-monitoring/" target="_blank">ITHACA Drought Monitoring</a></h1>
+
+            <ul class="nav nav-tabs nav-justified">
+              <li><a data-toggle="tab" href="#SSID_guide">SSID guide</a></li>
+              <li><a data-toggle="tab" href="#SPI_guide">SPI guide</a></li>
+            </ul>
+
+            <div class="tab-content">
+              <div id="SSID_guide" class="tab-pane fade">
+                <ul>
+                    <li><b>we exploit:</b><br>
+                    Global 15-day NDVI time-series (5.6 km spatial resolution) derived from the MODIS MOD13C1 Terra CMG dataset.
+                    The freely distributed TIMESAT analysis software <a href="http://www.sciencedirect.com/science/article/pii/S0098300404000974" target="_blank">(Jönsson & Eklundh, 2004)</a> both to correct residual noises in the base NDVI data and to extract phenological metrics (i.e. SSI, Start of Season, End of Season ) from the final fitted NDVI function.</li>
+                    <li><b>we provide:</b><br>
+                    Percent deviation from the historical average value (2001 to present) of the integral of the NDVI function describing the vegetation growing season from its start to its end. Unit of measure: %.
+                    Date of the vegetation growing season Start and End (SoS, EoS).
+                    Reliability coefficient (RC) of SSID. Unit of measure: %.</li>
+                    <li><b>aim and methodology in brief:</b><br>
+                    The SSID is an index describing the expected seasonal vegetation productivity, considering both agricultural production and available biomass in pastoral areas. The timely detection of critical conditions in vegetation health and productivity, during a vegetation growing season and before its end, helps to identify agricultural areas where crop failures are likely to occur.
+                    It is calculated as a simple percent deviation from the historical average value of the vegetation Seasonal Small Integral parameter (i.e. the baseline). An updated SSID value is added to the historical series every sixteen days, thus each time a new MODIS MOD13C1 becomes available. The SSID is supplied together with a reliability coefficient (RC) which is related to the temporal
+                    position of the current observation with respect to the total length of the examined season (i.e., RC reaches 100% once the vegetation growing season has ended). During the descending phase of the vegetation growing season (i.e., once the NDVI curve reach its maximum), the values of the SSID are normally subjected to minimal changes.</li>
+                </ul>
+              </div>
+              <div id="SPI_guide" class="tab-pane fade">
+                <ul>
+                    <li><b>we exploit:</b><br>
+                    Global precipitation time-series (0.25° spatial resolution) derived from the Tropical Rainfall Measuring Mission (TRMM) Multisatellite Precipitation Analysis estimation, computed at daily intervals (TRMM 3B42 daily data).
+                    <li><b>we provide:</b><br>
+                    3 months Standard Precipitation Index (SPI) datasets obtained considering the precipitation cumulated in the 3 months preceding the last day of each interval.
+                    <li><b>aim and methodology in brief:</b><br>
+                    The SPI is an index used to characterize meteorological drought: its calculation is based on well-known methodologies (McKee et al.,1993).
+                    The near real-time evaluation of precipitation deficits helps to improve the near real-time monitoring of vegetation conditions and the early detection of stress events. In particular, the near real-time SPI analysis permits to identify earlier warnings, by considering climatic conditions before the start of the vegetation growing season. SPI also supports the drought monitoring thanks to the possibility
+                    of detecting very critical events characterized by both vegetation productivity and rainfall anomalies.
+                </ul>
+              </div>
+            </div>
+
+            <button id="button2" name='Clic2' onclick="cur_theme.display_next()">
+                <a href="#">
+                    <span class="top"></span>
+                </a>
+            </button>
+            <button id="button3" name='Clic3' onclick="cur_theme.display_next_y()">
+                <a href="#">
+                    <span class="top"></span>
+                </a>
+            </button>
+            <div id="date2"></div>
+
+            <div id="date1"></div>
+
+            <button id="button1" name='Clic1' onclick="cur_theme.display_prev()">
+                <a href="#">
+                    <span class="bottom"></span>
+                </a>
+            </button>
+            <button id="button4" name='Clic4' onclick="cur_theme.display_prev_y()">
+                <a href="#">
+                    <span class="bottom"></span>
+                </a>
+             </button>
+
+            <div id="tastini">
+                <input href="#" id="NDVI" type="button" class="myButton" value="SSID" onclick="changeStatusNDVI(this.id); toggleContent(this.value,this.id)" disabled>
+                <input href="#" id="SPI" type="button" class="myButton" value="SPI" onclick="changeStatusSPI(this.id); toggleContent(this.value,this.id)">
+            </div>
+
+            <div class="descriptionBlock" id="descriptionBlock">
+                <h3 id="legend">Vegetation growth deviation (%) based on <b>SSID</b></h3>
+                <img id= "legendTrue" class="legend" src="http://www.ithacaweb.org/geoserver/drought/wms?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&WIDTH=20&HEIGHT=20&STRICT=false&style=drought:ssi&legend_options=borderColor:0000ff;border:true;fontSize:12;fontName:Open%20Sans">
+            </div>
+
+        </div>
+        {% endblock map_ui %}
+
+
+        {% block layers %}
+
+            var ssi = new ol.layer.Tile({title: 'SSID',
+                source: new ol.source.TileWMS ({
+                    url: geoserver_instance + '/drought/wms?',
+                    params: {'LAYERS': 'ssi_afr'},
+                    time: date2string(ndvi_dates[cur_ndvi_index]),
+                }),
+            });
+
+            var spi_3m = new ol.layer.Tile({title: 'SPI',
+                source: new ol.source.TileWMS ({
+                    url: geoserver_instance + '/drought/wms?',
+                    params: {'LAYERS': 'spi_3month'},
+                }),
+            });
+
+            var admin_boundaries = new ol.layer.Image({
+                source: new ol.source.ImageWMS ({
+                    url: 'http://www.ithacaweb.org/geoserver/wms',
+                    params: {'LAYERS': 'world_drought'},
+                    serverType: 'geoserver',
+                    }),
+            });
+
+            map.addLayer(ssi);
+            map.addLayer(admin_boundaries)
+            // end of map content definition
+        {% endblock layers %}
+
+        {% block functions %}
+            var ndvi_obj = {
+                lyr : ssi,
+                aval_dates : ndvi_dates,
+                cur_index : cur_ndvi_index,
+                band_name : 'SSID',
+                band2_name : 'RC',
+                band3_name : 'SoS',
+                band4_name : 'EoS',
+                band5_name : 'season',
+                refresh_date_elms : function(){
+                    update_date_elms(this.cur_index);
+                    },
+                display_prev : go_to_prev_time,
+                display_next : go_to_follow_time,
+                display_prev_y : go_to_prev_year,
+                display_next_y : go_to_follow_year
+            };
+
+            var spi_3m_obj = {
+                lyr : spi_3m,
+                aval_dates : SPI_dates,
+                cur_index : cur_SPI_index,
+                band_name : 'GRAY_INDEX',
+                refresh_date_elms : function(){
+                    update_date_elms(this.cur_index);
+                    },
+                display_prev : go_to_prev_time,
+                display_next : go_to_follow_time,
+                display_prev_y : go_to_prev_year,
+                display_next_y : go_to_follow_year
+            };
+
+            var cur_theme = ndvi_obj;
+
+            // return the date, given the positional index in the dates array
+            function get_cur_date(index) {
+                var cur_date = cur_theme.aval_dates[index];
+                return date2string(cur_date);
+            }
+
+            function date2string(cdate) {
+                var year = cdate.getFullYear().toString();
+                var month = (cdate.getMonth() + 1).toString();
+                var day = cdate.getDate().toString();
+                var str_date = year + '-' + month + '-' + day;
+                return str_date;
+            }
+
+            // update the page elements, given the positional index in the dates array
+            function update_date_elms(cdate){
+
+                // this is the content of the 'date2' div element
+                var month = cdate.toDateString().substr(4,3);
+                var utc_day = cdate.getDate().toString();
+                var period_start = new Date(cdate.getTime());
+                period_start.setDate(cdate.getDate()-15);
+                var month_period_start = period_start.toDateString().substr(4,3);
+                var utc_day_period_start = period_start.getDate().toString();
+                document.getElementById('date2').innerHTML = month_period_start + " " + utc_day_period_start + " - " + month + " " + utc_day;
+
+                // this is the content of the 'date1' div element
+                document.getElementById('date1').innerHTML = cdate.getFullYear();
+            }
+
+            function go_to_prev_year(){
+                if (cur_theme.cur_index === 0){return;}
+
+                var d = new Date(cur_theme.aval_dates[cur_theme.cur_index].valueOf());
+                d.setFullYear(d.getFullYear() - 1);
+
+                while (cur_theme.aval_dates[cur_theme.cur_index] > d && cur_theme.cur_index > 0) {
+                    cur_theme.cur_index--;
+                }
+
+                var backward_delta_time = Math.abs(cur_theme.aval_dates[cur_theme.cur_index].valueOf() - d.valueOf());
+                var forward_delta_time = Math.abs(cur_theme.aval_dates[cur_theme.cur_index + 1].valueOf() - d.valueOf());
+                if (forward_delta_time < backward_delta_time){cur_theme.cur_index++;}
+                destroyPopup();
+                cur_theme.lyr.getSource().updateParams({time:get_cur_date(cur_theme.cur_index)});
+                update_date_elms(cur_theme.aval_dates[cur_theme.cur_index]);
+            }
+
+            function go_to_follow_year(){
+                if (cur_theme.cur_index === cur_theme.aval_dates.length - 1){return;}
+
+                var d = new Date(cur_theme.aval_dates[cur_theme.cur_index].valueOf());
+                d.setFullYear(d.getFullYear() + 1);
+
+                while (cur_theme.aval_dates[cur_theme.cur_index] < d && cur_theme.cur_index < cur_theme.aval_dates.length - 1) {
+                    cur_theme.cur_index++;
+                }
+
+                var backward_delta_time = Math.abs(cur_theme.aval_dates[cur_theme.cur_index - 1].valueOf() - d.valueOf());
+                var forward_delta_time = Math.abs(cur_theme.aval_dates[cur_theme.cur_index].valueOf() - d.valueOf());
+                if (backward_delta_time < forward_delta_time){cur_theme.cur_index--;}
+
+                destroyPopup();
+                cur_theme.lyr.getSource().updateParams({time:get_cur_date(cur_theme.cur_index)});
+                update_date_elms(cur_theme.aval_dates[cur_theme.cur_index]);
+            }
+
+            function go_to_prev_time(){
+                move_time_index(-1);
+              }
+
+            function go_to_follow_time(){
+                move_time_index(1);
+            }
+
+            function move_time_index(step) {
+                if (cur_theme.cur_index + step >= 0 &&
+                        cur_theme.cur_index + step < cur_theme.aval_dates.length) {
+                    cur_theme.cur_index += step;
+                    destroyPopup();
+                    cur_theme.lyr.getSource().updateParams({time:get_cur_date(cur_theme.cur_index)});
+                    update_date_elms(cur_theme.aval_dates[cur_theme.cur_index]);
+                }
+            }
+
+            // cose nuove
+            $('[data-toggle=tab]').click(function(){
+              if ($(this).parent().hasClass('active')){
+                $($(this).attr("href")).toggleClass('active');
+              }
+            })
+
+            function changeStatusNDVI(id){
+                    document.getElementById(id).disabled = true;
+                    document.getElementById("SPI").disabled = false;
+            };
+
+            function changeStatusSPI(id){
+                    document.getElementById(id).disabled = true;
+                    document.getElementById("NDVI").disabled = false;
+            };
+
+            function toggleContent(value,id){
+                destroyPopup();
+                if(value === "SPI") {
+                    document.getElementById("legend").innerHTML = "3-month <b>SPI</b>";
+                    document.getElementById("legendTrue").src = geoserver_instance + "/drought/wms?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&WIDTH=20&HEIGHT=20&STRICT=false&style=drought_spi&legend_options=borderColor:0000ff;border:true;fontSize:12;fontName:Open%20Sans";
+                    var ndvi_cdate = cur_theme.aval_dates[cur_theme.cur_index]
+                    map.removeLayer(cur_theme.lyr);
+                    cur_theme = spi_3m_obj;
+                    cur_theme.cur_index = getRespIndex(ndvi_cdate);
+                    map.getLayers().insertAt(1, cur_theme.lyr);
+                    cur_theme.lyr.getSource().updateParams({time:get_cur_date(cur_theme.cur_index)});
+                    update_date_elms(cur_theme.aval_dates[cur_theme.cur_index]);
+                }
+                else {
+                    document.getElementById("legend").innerHTML = "Vegetation growth deviation (%) based on <b>SSID</b>";
+                    document.getElementById("legendTrue").src = geoserver_instance + "/drought/wms?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&WIDTH=20&HEIGHT=20&STRICT=false&style=drought:ssi&legend_options=borderColor:0000ff;border:true;fontSize:12;fontName:Open%20Sans";
+                    var spi_cdate = cur_theme.aval_dates[cur_theme.cur_index]
+                    map.removeLayer(cur_theme.lyr);
+                    cur_theme = ndvi_obj;
+                    cur_theme.cur_index = getRespIndex(spi_cdate);
+                    map.getLayers().insertAt(1, cur_theme.lyr);
+                    cur_theme.lyr.getSource().updateParams({time:get_cur_date(cur_theme.cur_index)});
+                    update_date_elms(cur_theme.aval_dates[cur_theme.cur_index]);
+                }
+            };
+
+            function getRespIndex(adate){
+                var i = 0;
+                while (cur_theme.aval_dates[i] < adate &&
+                        cur_theme.aval_dates.length > i + 1){
+                    i++;
+                }
+
+                if (i == 0) {
+                    return i;
+                }
+
+                var backward_delta_time = Math.abs(cur_theme.aval_dates[i - 1].valueOf() - adate.valueOf());
+                var forward_delta_time = Math.abs(cur_theme.aval_dates[i].valueOf() - adate.valueOf());
+                if (backward_delta_time < forward_delta_time){i--;}
+
+                return i;
+            }
+
+            var viewProjection = view.getProjection();
+
+
+            map.on('singleclick', function(evt) {
+                var viewResolution = view.getResolution();
+                var url = map.getLayers().a[1].getSource().getGetFeatureInfoUrl(
+                    evt.coordinate, viewResolution, viewProjection, {'INFO_FORMAT': 'application/json'});
+                var coord = evt.coordinate;
+                if (url) {
+                    $.getJSON(url, function(result) {
+                        var layerTitle = map.getLayers().getArray()[1].get('title');
+                        var response = result.features[0].properties;
+                        var value = response[cur_theme.band_name]
+                        if (layerTitle == 'SSID') {
+                            if (value != -5555 & value != -9999 & value != -4444 & value != -7777) {
+                                var text;
+                                text = cur_theme.band_name + ': ' + response[cur_theme.band_name].toFixed(2) + ' %<br>';
+                                text += cur_theme.band2_name + ': ' + response[cur_theme.band2_name].toFixed(0) + ' %<br>';
+                                var sos_encr = response[cur_theme.band3_name].toFixed(0)
+                                var sos = new Date(+sos_encr.substr(0, 4), +sos_encr.substr(4, 2)-1, +sos_encr.substr(6, 2))
+                                text += cur_theme.band3_name + ': ' + sos.toDateString().slice(4) + ' <br>';
+                                var eos_encr = response[cur_theme.band4_name].toFixed(0)
+                                var eos = new Date(+eos_encr.substr(0, 4), +eos_encr.substr(4, 2)-1, +eos_encr.substr(6, 2))
+                                text += cur_theme.band4_name + ': ' + eos.toDateString().slice(4);
+                                spawnPopup(coord);
+                                document.getElementById("popup").innerHTML = text;
+                            }
+                        }
+                        else {
+                            if (value != -99) {
+                                spawnPopup(coord);
+                                document.getElementById("popup").innerHTML = layerTitle + ': ' + value.toFixed(2);
+                            }
+                        }
+                    })
+                } else {
+                    console.log("Uh Oh, something went wrong.");
+                }
+             });
+
+            function spawnPopup(coord){
+                popup = $("<div class='popup'> <p id='popup'></p> <button class='closebtn' onclick='destroyPopup()'></button></div>");
+                overlay = new ol.Overlay({
+                    element:popup
+                });
+                map.removeOverlay(map.getOverlays().a[0]);
+                map.addOverlay(overlay);
+                overlay.setPosition(coord);
+            };
+
+            function destroyPopup(){
+                var ovs_a = map.getOverlays().a;
+                if (ovs_a.length === 1){
+                   map.removeOverlay(ovs_a[0]);
+                }
+            };
+        {% endblock functions %}
